@@ -17,11 +17,11 @@ button{margin:10px 8px 0 0;padding:13px 16px;border:0;border-radius:6px;backgrou
 .sub{color:#a0a0a8;font-size:.9rem}
 hr{border:0;border-top:1px solid #34343a;margin:16px 0}
 #msg{margin-top:10px;color:#ff6b6b;word-break:break-word}
-#ia{display:none;white-space:pre-wrap;margin-top:12px;padding:12px;background:#1f1f23;border-left:4px solid #c8102e;border-radius:6px}
+#ia{display:none;white-space:pre-wrap;margin-top:12px;padding:12px;background:#1f1f23;border-left:4px solid #c8102e;border-radius:6px;word-break:break-word}
 </style>
 </head>
 <body>
-<h1>Transmi App v5</h1>
+<h1>Transmi App v6</h1>
 <div id="estado">JS no arrancó</div>
 
 <label>Clave de Croma</label>
@@ -36,7 +36,7 @@ hr{border:0;border-top:1px solid #34343a;margin:16px 0}
 <hr>
 
 <label>Pregúntale a la IA</label>
-<input id="pq" placeholder="¿Cómo llego al Portal Norte desde aquí?">
+<input id="pq" placeholder="¿Cuánto demora el 614 desde aquí?">
 <button type="button" onclick="preguntar()">Preguntar</button>
 
 <hr>
@@ -55,9 +55,9 @@ hr{border:0;border-top:1px solid #34343a;margin:16px 0}
 <script>
 function $(id) { return document.getElementById(id); }
 var timer = null;
-var MODELO_GEMINI = 'gemini-2.5-flash';
-var MODELO_GROQ = 'llama-3.3-70b-versatile';
-var SISTEMA = 'Eres el asistente de una app de TransMilenio en Bogotá. Responde en español colombiano, claro y corto (máximo 4 frases), usando SOLO los datos que te doy. Si hay un error, explica en palabras simples qué pasó y qué puede hacer la persona. No inventes buses, rutas ni tiempos.';
+var MODELO_GEMINI = 'gemini-3.8-flash';
+var MODELO_GROQ = 'openai/gpt-oss-20b';
+var SISTEMA = 'Eres el asistente de una app de TransMilenio en Bogotá. Responde en español colombiano, claro y corto (máximo 4 frases), usando SOLO los datos que te doy. Si hay un error, explica en palabras simples qué pasó y qué puede hacer la persona. No inventes buses, rutas ni tiempos. Si los datos no alcanzan para responder, dilo.';
 
 window.onerror = function (m) { $('estado').style.color = '#ff6b6b'; $('estado').textContent = 'Error: ' + m; };
 
@@ -259,6 +259,18 @@ async function preguntar() {
   try {
     var u = await ubicacion();
     contexto.ubicacion_persona = u;
+
+    var m = q.match(/\b([A-Za-z]{0,2}\d{1,3}[A-Za-z]?)\b/);
+    if (m) {
+      try {
+        var v = await croma('vehicles/v1', { route: m[1].toUpperCase(), latitude: u.lat, longitude: u.lon, radius_m: 5000, per_page: 5 });
+        contexto.ruta_preguntada = m[1].toUpperCase();
+        contexto.buses_de_esa_ruta_cerca = sacarLista(v, 'vehicles').map(function (x) {
+          return { distancia_m: Math.round(x.distance_m || 0), velocidad_kmh: x.speed_kmh, hacia: x.stop_name, estado: x.stop_status, destino: x.route_name };
+        });
+      } catch (e) { contexto.buses_de_esa_ruta_cerca = 'no disponible: ' + (e.message || e); }
+    }
+
     var d = await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 700, per_page: 5 });
     var stops = sacarLista(d, 'stops');
     contexto.paraderos_cercanos = [];
@@ -276,7 +288,7 @@ async function preguntar() {
   } catch (e) {
     contexto.aviso = 'No se pudieron obtener los datos: ' + (e.message || e);
   }
-  decir('Pregunta de la persona: "' + q + '". Responde con los datos. Si no alcanzan para planear el viaje completo, dilo y sugiere qué paradero y bus tomar primero.', JSON.stringify(contexto));
+  decir('Pregunta de la persona: "' + q + '". Responde con los datos. Si no alcanzan para responder completo, dilo y sugiere qué paradero y bus tomar primero.', JSON.stringify(contexto));
 }
 
 ['croma', 'gemini', 'groq'].forEach(function (k) { $('k-' + k).value = leer(k); });
