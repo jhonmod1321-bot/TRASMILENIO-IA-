@@ -19,9 +19,9 @@ jobs:
           java-version: 21
       - run: npm install
       - run: npx cap add android
-      - name: Permisos de ubicación
+      - name: Permisos de ubicación y notificaciones
         run: |
-          sed -i '0,/<application/s##<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i '0,/<application/s##<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <application#' android/app/src/main/AndroidManifest.xml
       - run: npx cap sync android
       - run: |
           cd android
