@@ -1,0 +1,10 @@
+{
+  "appId": "com.jhon.transmiapp",
+  "appName": "Transmi App",
+  "webDir": "www",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}
