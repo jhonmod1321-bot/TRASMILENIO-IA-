@@ -1,0 +1,8 @@
+{
+  "name": "Transmi App",
+  "short_name": "Transmi",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#c8102e",
+  "theme_color": "#c8102e"
+}
