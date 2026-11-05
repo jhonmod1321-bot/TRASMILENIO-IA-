@@ -17,10 +17,11 @@ button{margin:10px 8px 0 0;padding:13px 16px;border:0;border-radius:6px;backgrou
 .sub{color:#a0a0a8;font-size:.9rem}
 hr{border:0;border-top:1px solid #34343a;margin:16px 0}
 #msg{margin-top:10px;color:#ff6b6b;word-break:break-word}
+#ia{display:none;white-space:pre-wrap;margin-top:12px;padding:12px;background:#1f1f23;border-left:4px solid #c8102e;border-radius:6px}
 </style>
 </head>
 <body>
-<h1>Transmi App v4</h1>
+<h1>Transmi App v5</h1>
 <div id="estado">JS no arrancó</div>
 
 <label>Clave de Croma</label>
@@ -34,6 +35,12 @@ hr{border:0;border-top:1px solid #34343a;margin:16px 0}
 
 <hr>
 
+<label>Pregúntale a la IA</label>
+<input id="pq" placeholder="¿Cómo llego al Portal Norte desde aquí?">
+<button type="button" onclick="preguntar()">Preguntar</button>
+
+<hr>
+
 <label>Busca una estación o paradero</label>
 <input id="q" placeholder="Portal Norte, Calle 72…">
 <button type="button" onclick="buscar()">Buscar</button>
@@ -43,9 +50,14 @@ hr{border:0;border-top:1px solid #34343a;margin:16px 0}
 <h3 id="titulo"></h3>
 <div id="llegadas"></div>
 
+<div id="ia"></div>
+
 <script>
 function $(id) { return document.getElementById(id); }
 var timer = null;
+var MODELO_GEMINI = 'gemini-2.5-flash';
+var MODELO_GROQ = 'llama-3.3-70b-versatile';
+var SISTEMA = 'Eres el asistente de una app de TransMilenio en Bogotá. Responde en español colombiano, claro y corto (máximo 4 frases), usando SOLO los datos que te doy. Si hay un error, explica en palabras simples qué pasó y qué puede hacer la persona. No inventes buses, rutas ni tiempos.';
 
 window.onerror = function (m) { $('estado').style.color = '#ff6b6b'; $('estado').textContent = 'Error: ' + m; };
 
@@ -77,6 +89,60 @@ function sacarLista(d, nombre) {
   throw new Error('Formato inesperado. Croma respondió: ' + JSON.stringify(d).slice(0, 400));
 }
 
+/* ---------- IA: Gemini primero, Groq de respaldo ---------- */
+async function ia(contexto, pregunta) {
+  var errs = [];
+  var gk = $('k-gemini').value.trim() || leer('gemini');
+  var qk = $('k-groq').value.trim() || leer('groq');
+  var texto = pregunta + '\n\nDATOS:\n' + contexto.slice(0, 3500);
+
+  if (gk) {
+    try {
+      var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODELO_GEMINI + ':generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gk },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SISTEMA }] },
+          contents: [{ role: 'user', parts: [{ text: texto }] }]
+        })
+      });
+      var j = await r.json();
+      if (!r.ok) throw new Error(r.status + ' ' + JSON.stringify(j).slice(0, 200));
+      return { texto: j.candidates[0].content.parts[0].text, quien: 'Gemini' };
+    } catch (e) { errs.push('Gemini: ' + e.message); }
+  }
+
+  if (qk) {
+    try {
+      var r2 = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + qk },
+        body: JSON.stringify({
+          model: MODELO_GROQ,
+          messages: [{ role: 'system', content: SISTEMA }, { role: 'user', content: texto }]
+        })
+      });
+      var j2 = await r2.json();
+      if (!r2.ok) throw new Error(r2.status + ' ' + JSON.stringify(j2).slice(0, 200));
+      return { texto: j2.choices[0].message.content, quien: 'Groq' };
+    } catch (e) { errs.push('Groq: ' + e.message); }
+  }
+
+  throw new Error(errs.length ? errs.join(' | ') : 'No hay claves de IA guardadas.');
+}
+
+async function decir(pregunta, contexto) {
+  $('ia').style.display = 'block';
+  $('ia').textContent = 'La IA está pensando…';
+  try {
+    var r = await ia(contexto, pregunta);
+    $('ia').textContent = r.texto + '\n\n(respondió ' + r.quien + ')';
+  } catch (e) {
+    $('ia').textContent = 'La IA no pudo responder: ' + e.message;
+  }
+}
+
+/* ---------- Búsqueda ---------- */
 function mostrarParaderos(stops, conDistancia) {
   $('lista').innerHTML = '';
   stops.forEach(function (s) {
@@ -89,15 +155,24 @@ function mostrarParaderos(stops, conDistancia) {
   });
 }
 
+function resumenParaderos(stops) {
+  return JSON.stringify(stops.map(function (s) {
+    return { nombre: s.name, distancia_m: s.distance_m ? Math.round(s.distance_m) : undefined, rutas: (s.route_codes || []).slice(0, 12) };
+  }));
+}
+
 async function buscar() {
+  var q = $('q').value.trim();
   $('msg').textContent = 'Buscando…'; $('lista').innerHTML = '';
   try {
-    var d = await croma('stops-search/v1', { query: $('q').value.trim(), per_page: 8 });
+    var d = await croma('stops-search/v1', { query: q, per_page: 8 });
     var stops = sacarLista(d, 'stops');
     $('msg').textContent = stops.length ? 'Elige un paradero:' : 'No encontré paraderos con ese nombre.';
     mostrarParaderos(stops, false);
+    decir('La persona buscó "' + q + '". Cuéntale en pocas frases qué paraderos encontraste y cuál le conviene elegir.', resumenParaderos(stops));
   } catch (e) {
     $('msg').textContent = 'No se pudo buscar: ' + e.message;
+    decir('Hubo un error al buscar paraderos. Explícale a la persona qué pasó y qué puede hacer.', e.message);
   }
 }
 
@@ -123,8 +198,10 @@ async function cerca() {
     var stops = sacarLista(d, 'stops');
     $('msg').textContent = stops.length ? 'Paraderos cerca de ti:' : 'No hay paraderos a 600 metros.';
     mostrarParaderos(stops, true);
+    decir('Estos son los paraderos cerca de la persona. Dile en pocas frases cuál es el más cercano y qué rutas pasan.', resumenParaderos(stops));
   } catch (e) {
     $('msg').textContent = 'No pude buscar cerca de ti: ' + (e.message || e);
+    decir('Hubo un error al buscar paraderos cercanos. Explícale a la persona qué pasó y qué puede hacer.', String(e.message || e));
   }
 }
 
@@ -132,16 +209,16 @@ function elegir(s) {
   $('lista').innerHTML = '';
   $('titulo').textContent = s.name;
   clearInterval(timer);
-  cargar(s.stop_id);
-  timer = setInterval(function () { cargar(s.stop_id); }, 20000);
+  cargar(s.stop_id, true);
+  timer = setInterval(function () { cargar(s.stop_id, false); }, 20000);
 }
 
-async function cargar(id) {
+async function cargar(id, conIA) {
   try {
     var d = await croma('stop-arrivals/v1', { stop_id: id, limit: 10 });
     var llegadas = sacarLista(d, 'arrivals');
     $('llegadas').innerHTML = '';
-    if (!llegadas.length) { $('llegadas').textContent = 'No hay buses en camino ahora.'; return; }
+    if (!llegadas.length) { $('llegadas').textContent = 'No hay buses en camino ahora.'; }
     llegadas.forEach(function (a) {
       var atraso = Math.round(a.delay_seconds / 60);
       var nota = atraso > 0 ? 'va ' + atraso + ' min atrasado' : 'a tiempo';
@@ -160,9 +237,46 @@ async function cargar(id) {
       fila.appendChild(izq); fila.appendChild(der);
       $('llegadas').appendChild(fila);
     });
+    if (conIA) {
+      decir('Estas son las llegadas en vivo al paradero ' + $('titulo').textContent + '. Dile a la persona qué bus llega primero y si hay retrasos.',
+        JSON.stringify(llegadas.slice(0, 8).map(function (a) {
+          return { ruta: a.route_code, destino: a.route_name, minutos: Math.round(a.minutes_away), atraso_segundos: a.delay_seconds };
+        })));
+    }
   } catch (e) {
     $('llegadas').textContent = 'No se pudieron cargar las llegadas: ' + e.message;
+    if (conIA) decir('Hubo un error al cargar las llegadas. Explícale a la persona qué pasó y qué puede hacer.', e.message);
   }
+}
+
+/* ---------- Pregunta libre a la IA con datos reales ---------- */
+async function preguntar() {
+  var q = $('pq').value.trim();
+  if (!q) { return; }
+  $('ia').style.display = 'block';
+  $('ia').textContent = 'Reuniendo datos de TransMilenio…';
+  var contexto = {};
+  try {
+    var u = await ubicacion();
+    contexto.ubicacion_persona = u;
+    var d = await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 700, per_page: 5 });
+    var stops = sacarLista(d, 'stops');
+    contexto.paraderos_cercanos = [];
+    for (var i = 0; i < Math.min(3, stops.length); i++) {
+      var s = stops[i];
+      var item = { nombre: s.name, distancia_m: Math.round(s.distance_m || 0), rutas: (s.route_codes || []).slice(0, 12) };
+      try {
+        var a = await croma('stop-arrivals/v1', { stop_id: s.stop_id, limit: 5 });
+        item.proximos_buses = sacarLista(a, 'arrivals').map(function (x) {
+          return { ruta: x.route_code, destino: x.route_name, minutos: Math.round(x.minutes_away), atraso_segundos: x.delay_seconds };
+        });
+      } catch (e) { item.proximos_buses = 'no disponible'; }
+      contexto.paraderos_cercanos.push(item);
+    }
+  } catch (e) {
+    contexto.aviso = 'No se pudieron obtener los datos: ' + (e.message || e);
+  }
+  decir('Pregunta de la persona: "' + q + '". Responde con los datos. Si no alcanzan para planear el viaje completo, dilo y sugiere qué paradero y bus tomar primero.', JSON.stringify(contexto));
 }
 
 ['croma', 'gemini', 'groq'].forEach(function (k) { $('k-' + k).value = leer(k); });
