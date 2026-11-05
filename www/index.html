@@ -4,118 +4,158 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Transmi App</title>
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#c8102e">
 <style>
-:root{--bg:#f6f4f1;--fg:#1b1b1f;--card:#ffffff;--line:#ddd8d2;--red:#c8102e;--muted:#6b6b70}
-@media (prefers-color-scheme:dark){:root{--bg:#141416;--fg:#f0eeea;--card:#1f1f23;--line:#34343a;--muted:#a0a0a8}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,sans-serif}
-header{background:var(--red);color:#fff;padding:14px 16px;font-weight:700;font-size:1.15rem}
-nav{display:flex;border-bottom:1px solid var(--line)}
-nav button{flex:1;padding:14px;border:0;background:none;color:var(--muted);font:inherit;font-weight:600;border-bottom:3px solid transparent}
-nav button.on{color:var(--fg);border-bottom-color:var(--red)}
-main{max-width:560px;margin:auto;padding:16px}
-section{display:none}section.on{display:block}
-label{display:block;margin:14px 0 4px;font-weight:600}
-input{width:100%;padding:11px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);font:inherit}
-.btn{margin-top:12px;margin-right:8px;padding:12px 16px;border:0;border-radius:6px;background:var(--red);color:#fff;font:inherit;font-weight:700}
-.item{display:block;width:100%;text-align:left;margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);font:inherit}
-.row{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.min{font-size:1.5rem;font-weight:800;color:var(--red);white-space:nowrap}
-.sub{color:var(--muted);font-size:.9rem}
-#msg{margin-top:12px;color:var(--red)}
-#err{display:none;background:#7a0a1c;color:#fff;padding:10px;border-radius:6px;margin-bottom:12px;font-size:.9rem}
+body{margin:0;background:#141416;color:#f0eeea;font:16px/1.4 system-ui,sans-serif;padding:14px}
+h1{margin:0 0 6px;font-size:1.2rem;color:#fff}
+#estado{font-size:.9rem;margin-bottom:10px;color:#ff6b6b}
+label{display:block;margin:10px 0 4px;font-weight:600}
+input{width:100%;box-sizing:border-box;padding:11px;border:1px solid #34343a;border-radius:6px;background:#1f1f23;color:#f0eeea;font:inherit}
+button{margin:10px 8px 0 0;padding:13px 16px;border:0;border-radius:6px;background:#c8102e;color:#fff;font:inherit;font-weight:700}
+.item{display:block;width:100%;text-align:left;margin:8px 0 0;background:#1f1f23;border:1px solid #34343a;font-weight:400}
+.fila{display:flex;justify-content:space-between;gap:10px;background:#1f1f23;border:1px solid #34343a;border-radius:6px;padding:12px;margin-top:8px}
+.min{font-size:1.4rem;font-weight:800;color:#ff4d6a;white-space:nowrap}
+.sub{color:#a0a0a8;font-size:.9rem}
+hr{border:0;border-top:1px solid #34343a;margin:16px 0}
+#msg{margin-top:10px;color:#ff6b6b}
 </style>
 </head>
 <body>
-<header>Transmi App</header>
-<nav>
-  <button id="t-llegadas" class="on" type="button">Llegadas</button>
-  <button id="t-ajustes" type="button">Ajustes</button>
-</nav>
-<main>
-  <div id="err"></div>
+<h1>Transmi App v3</h1>
+<div id="estado">JS no arrancó</div>
 
-  <section id="s-llegadas" class="on">
-    <label for="q">Busca una estación o paradero</label>
-    <input id="q" placeholder="Portal Norte, Calle 72…">
-    <button id="b-buscar" class="btn" type="button">Buscar</button>
-    <button id="b-cerca" class="btn" type="button">Paraderos cerca de mí</button>
-    <div id="msg"></div>
-    <div id="lista"></div>
-    <h3 id="titulo"></h3>
-    <div id="llegadas"></div>
-  </section>
+<label>Clave de Croma</label>
+<input id="k-croma" autocomplete="off">
+<label>Clave de Gemini</label>
+<input id="k-gemini" autocomplete="off">
+<label>Clave de Groq</label>
+<input id="k-groq" autocomplete="off">
+<button type="button" onclick="guardar()">Guardar claves</button>
+<div id="ok" class="sub"></div>
 
-  <section id="s-ajustes">
-    <p class="sub">Tus claves se guardan solo en este dispositivo.</p>
-    <label for="k-croma">Clave de Croma</label>
-    <input id="k-croma" type="password" autocomplete="off">
-    <label for="k-gemini">Clave de Gemini</label>
-    <input id="k-gemini" type="password" autocomplete="off">
-    <label for="k-groq">Clave de Groq</label>
-    <input id="k-groq" type="password" autocomplete="off">
-    <button id="b-guardar" class="btn" type="button">Guardar claves</button>
-    <div id="ok" class="sub"></div>
-  </section>
-</main>
+<hr>
+
+<label>Busca una estación o paradero</label>
+<input id="q" placeholder="Portal Norte, Calle 72…">
+<button type="button" onclick="buscar()">Buscar</button>
+<button type="button" onclick="cerca()">Paraderos cerca de mí</button>
+<div id="msg"></div>
+<div id="lista"></div>
+<h3 id="titulo"></h3>
+<div id="llegadas"></div>
 
 <script>
-const $ = id => document.getElementById(id);
-const CLAVES = ['croma', 'gemini', 'groq'];
-let timer = null;
+function $(id) { return document.getElementById(id); }
+var timer = null;
 
-function mostrarError(t) {
-  const e = $('err');
-  e.style.display = 'block';
-  e.textContent = t;
-}
-window.addEventListener('error', ev => mostrarError('Error: ' + ev.message));
-window.addEventListener('unhandledrejection', ev =>
-  mostrarError('Error: ' + (ev.reason && ev.reason.message ? ev.reason.message : ev.reason)));
+window.onerror = function (m) { $('estado').style.color = '#ff6b6b'; $('estado').textContent = 'Error: ' + m; };
 
 function leer(k) { try { return localStorage.getItem('clave_' + k) || ''; } catch (e) { return ''; } }
 function escribir(k, v) { try { localStorage.setItem('clave_' + k, v); } catch (e) {} }
 
-function tab(n) {
-  ['llegadas', 'ajustes'].forEach(x => {
-    $('s-' + x).classList.toggle('on', x === n);
-    $('t-' + x).classList.toggle('on', x === n);
-  });
-}
-
 function guardar() {
-  CLAVES.forEach(k => escribir(k, $('k-' + k).value.trim()));
+  ['croma', 'gemini', 'groq'].forEach(function (k) { escribir(k, $('k-' + k).value.trim()); });
   $('ok').textContent = 'Claves guardadas.';
 }
 
 async function croma(ruta, cuerpo) {
-  const r = await fetch('https://api.croma.run/co/transmilenio/' + ruta, {
+  var clave = $('k-croma').value.trim() || leer('croma');
+  var r = await fetch('https://api.croma.run/co/transmilenio/' + ruta, {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + leer('croma'), 'Content-Type': 'application/json' },
+    headers: { 'Authorization': 'Bearer ' + clave, 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo)
   });
   if (!r.ok) throw new Error('Croma respondió con error ' + r.status);
   return r.json();
 }
 
+function mostrarParaderos(stops, conDistancia) {
+  $('lista').innerHTML = '';
+  stops.forEach(function (s) {
+    var b = document.createElement('button');
+    b.className = 'item';
+    b.type = 'button';
+    b.textContent = conDistancia ? s.name + ' · a ' + Math.round(s.distance_m) + ' m' : s.name;
+    b.onclick = function () { elegir(s); };
+    $('lista').appendChild(b);
+  });
+}
+
 async function buscar() {
-  $('msg').textContent = ''; $('lista').innerHTML = '';
+  $('msg').textContent = 'Buscando…'; $('lista').innerHTML = '';
   try {
-    const d = await croma('stops-search/v1', { query: $('q').value.trim(), per_page: 8 });
-    if (!d.stops.length) { $('msg').textContent = 'No encontré paraderos con ese nombre.'; return; }
-    d.stops.forEach(s => {
-      const b = document.createElement('button');
-      b.className = 'item';
-      b.type = 'button';
-      b.textContent = s.name;
-      b.addEventListener('click', () => elegir(s));
-      $('lista').appendChild(b);
-    });
+    var d = await croma('stops-search/v1', { query: $('q').value.trim(), per_page: 8 });
+    $('msg').textContent = d.stops.length ? 'Elige un paradero:' : 'No encontré paraderos con ese nombre.';
+    mostrarParaderos(d.stops, false);
   } catch (e) {
-    $('msg').textContent = 'No se pudo buscar. Revisa tu clave de Croma en Ajustes. ' + e.message;
+    $('msg').textContent = 'No se pudo buscar: ' + e.message;
   }
 }
 
-asyn
+async function ubicacion() {
+  var G = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation;
+  if (G) {
+    await G.requestPermissions();
+    var p = await G.getCurrentPosition({ enableHighAccuracy: true });
+    return { lat: p.coords.latitude, lon: p.coords.longitude };
+  }
+  return new Promise(function (ok, no) {
+    navigator.geolocation.getCurrentPosition(function (p) {
+      ok({ lat: p.coords.latitude, lon: p.coords.longitude });
+    }, no);
+  });
+}
+
+async function cerca() {
+  $('msg').textContent = 'Buscando tu ubicación…'; $('lista').innerHTML = '';
+  try {
+    var u = await ubicacion();
+    var d = await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 600, per_page: 8 });
+    $('msg').textContent = d.stops.length ? 'Paraderos cerca de ti:' : 'No hay paraderos a 600 metros.';
+    mostrarParaderos(d.stops, true);
+  } catch (e) {
+    $('msg').textContent = 'No pude buscar cerca de ti: ' + (e.message || e);
+  }
+}
+
+function elegir(s) {
+  $('lista').innerHTML = '';
+  $('titulo').textContent = s.name;
+  clearInterval(timer);
+  cargar(s.stop_id);
+  timer = setInterval(function () { cargar(s.stop_id); }, 20000);
+}
+
+async function cargar(id) {
+  try {
+    var d = await croma('stop-arrivals/v1', { stop_id: id, limit: 10 });
+    $('llegadas').innerHTML = '';
+    if (!d.arrivals.length) { $('llegadas').textContent = 'No hay buses en camino ahora.'; return; }
+    d.arrivals.forEach(function (a) {
+      var atraso = Math.round(a.delay_seconds / 60);
+      var nota = atraso > 0 ? 'va ' + atraso + ' min atrasado' : 'a tiempo';
+      var fila = document.createElement('div');
+      fila.className = 'fila';
+      var izq = document.createElement('div');
+      var t1 = document.createElement('strong');
+      t1.textContent = a.route_code;
+      var t2 = document.createElement('div');
+      t2.className = 'sub';
+      t2.textContent = a.route_name + ' · ' + nota;
+      izq.appendChild(t1); izq.appendChild(t2);
+      var der = document.createElement('div');
+      der.className = 'min';
+      der.textContent = Math.round(a.minutes_away) + ' min';
+      fila.appendChild(izq); fila.appendChild(der);
+      $('llegadas').appendChild(fila);
+    });
+  } catch (e) {
+    $('llegadas').textContent = 'No se pudieron cargar las llegadas: ' + e.message;
+  }
+}
+
+['croma', 'gemini', 'groq'].forEach(function (k) { $('k-' + k).value = leer(k); });
+$('estado').style.color = '#5ddf8a';
+$('estado').textContent = 'JS funcionando';
+</script>
+</body>
+</html>
