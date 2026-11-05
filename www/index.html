@@ -16,14 +16,15 @@ button{margin:10px 8px 0 0;padding:13px 16px;border:0;border-radius:6px;backgrou
 .min{font-size:1.4rem;font-weight:800;color:#ff4d6a;white-space:nowrap}
 .sub{color:#a0a0a8;font-size:.9rem}
 hr{border:0;border-top:1px solid #34343a;margin:16px 0}
-#msg{margin-top:10px;color:#ff6b6b;word-break:break-word}
+#msg,#mmsg{margin-top:10px;color:#ff6b6b;word-break:break-word}
 details{margin-top:12px}
 summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6px;font-weight:700}
 #ia{white-space:pre-wrap;padding:12px;background:#1f1f23;border-left:4px solid #c8102e;border-radius:6px;margin-top:8px;word-break:break-word}
+#mapa{height:340px;border-radius:6px;margin-top:10px;background:#1f1f23}
 </style>
 </head>
 <body>
-<h1>Transmi App v7</h1>
+<h1>Transmi App v8</h1>
 <div id="estado">JS no arrancó</div>
 
 <details id="det-claves">
@@ -43,6 +44,14 @@ summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6
 <label>Pregúntale a la IA</label>
 <input id="pq" placeholder="¿Cuánto demora el 614 desde aquí?">
 <button type="button" onclick="preguntar()">Preguntar</button>
+
+<details id="det-plan">
+  <summary>Cómo llegar a un destino</summary>
+  <label>¿A dónde vas?</label>
+  <input id="dest" placeholder="Portal Norte, Universidad Nacional…">
+  <button type="button" onclick="planear()">Buscar ruta desde mi ubicación</button>
+  <div id="plan" class="sub"></div>
+</details>
 
 <hr>
 
@@ -65,13 +74,43 @@ summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6
   <details id="det-ll" open>
     <summary id="titulo">Llegadas</summary>
     <div id="llegadas"></div>
+    <label>Avisarme cuando llegue la ruta</label>
+    <input id="av" placeholder="Ej: 614 (déjalo vacío para quitar el aviso)">
+    <button type="button" onclick="activarAviso()">Activar aviso</button>
+    <button type="button" onclick="agregarFav()">Guardar en favoritos</button>
+    <div id="avok" class="sub"></div>
+    <div id="favok" class="sub"></div>
+  </details>
+  <details id="det-ap">
+    <summary>Alertas de este paradero</summary>
+    <div id="alertas-p"></div>
   </details>
 </div>
 
+<details id="det-mapa">
+  <summary>Mapa en vivo</summary>
+  <label>Ruta</label>
+  <input id="mr" placeholder="614, B10, H75…">
+  <button type="button" onclick="verMapa()">Ver buses en el mapa</button>
+  <div id="mmsg"></div>
+  <div id="mapa"></div>
+</details>
+
+<details id="det-fav">
+  <summary>Mis favoritos</summary>
+  <div id="favs"></div>
+</details>
+
+<details id="det-ar">
+  <summary>Alertas de toda la red</summary>
+  <button type="button" onclick="alertas(null)">Ver alertas ahora</button>
+  <div id="alertas-r"></div>
+</details>
+
 <script>
 function $(id) { return document.getElementById(id); }
-var timer = null;
-var ULT = null;
+var timer = null, ULT = null, SEL = null, AVISO = null, ULTAVISO = 0;
+var MAPA = null, CAPA = null, MTIMER = null;
 var MODELO_GEMINI = 'gemini-3.8-flash';
 var MODELO_GROQ = 'openai/gpt-oss-20b';
 var SISTEMA = 'Eres el asistente de una app de TransMilenio en Bogotá. Responde en español colombiano, claro y corto (máximo 4 frases), usando SOLO los datos que te doy. No uses asteriscos ni formato markdown. Si hay un error, explica en palabras simples qué pasó y qué puede hacer la persona. No inventes buses, rutas ni tiempos. Si los datos no alcanzan para responder, dilo.';
@@ -112,7 +151,6 @@ async function ia(contexto, pregunta) {
   var gk = $('k-gemini').value.trim() || leer('gemini');
   var qk = $('k-groq').value.trim() || leer('groq');
   var texto = pregunta + '\n\nDATOS:\n' + contexto.slice(0, 3500);
-
   if (gk) {
     try {
       var r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODELO_GEMINI + ':generateContent', {
@@ -128,23 +166,18 @@ async function ia(contexto, pregunta) {
       return { texto: j.candidates[0].content.parts[0].text, quien: 'Gemini' };
     } catch (e) { errs.push('Gemini: ' + e.message); }
   }
-
   if (qk) {
     try {
       var r2 = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + qk },
-        body: JSON.stringify({
-          model: MODELO_GROQ,
-          messages: [{ role: 'system', content: SISTEMA }, { role: 'user', content: texto }]
-        })
+        body: JSON.stringify({ model: MODELO_GROQ, messages: [{ role: 'system', content: SISTEMA }, { role: 'user', content: texto }] })
       });
       var j2 = await r2.json();
       if (!r2.ok) throw new Error(r2.status + ' ' + JSON.stringify(j2).slice(0, 200));
       return { texto: j2.choices[0].message.content, quien: 'Groq' };
     } catch (e) { errs.push('Groq: ' + e.message); }
   }
-
   throw new Error(errs.length ? errs.join(' | ') : 'No hay claves de IA guardadas.');
 }
 
@@ -161,10 +194,9 @@ async function decir(pregunta, contexto, subir) {
   if (subir) { $('iabox').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 }
 
-/* ---------- Tipo de paradero y distancia ---------- */
+/* ---------- Ubicación, tipo y distancia ---------- */
 function tipo(s) {
-  var sy = s.systems || [];
-  var t = [];
+  var sy = s.systems || [], t = [];
   if (sy.indexOf('troncal') >= 0 || sy.indexOf('dual') >= 0) t.push('TransMilenio');
   if (sy.indexOf('alimentador') >= 0) t.push('Alimentador');
   if (sy.some(function (z) { return z.indexOf('zonal') === 0; })) t.push('SITP');
@@ -187,9 +219,7 @@ async function ubicacion() {
     u = { lat: p.coords.latitude, lon: p.coords.longitude };
   } else {
     u = await new Promise(function (ok, no) {
-      navigator.geolocation.getCurrentPosition(function (p) {
-        ok({ lat: p.coords.latitude, lon: p.coords.longitude });
-      }, no);
+      navigator.geolocation.getCurrentPosition(function (p) { ok({ lat: p.coords.latitude, lon: p.coords.longitude }); }, no);
     });
   }
   ULT = u;
@@ -197,10 +227,7 @@ async function ubicacion() {
 }
 
 function ubicacionRapida() {
-  return Promise.race([
-    ubicacion(),
-    new Promise(function (ok) { setTimeout(function () { ok(ULT); }, 5000); })
-  ]).catch(function () { return ULT; });
+  return Promise.race([ubicacion(), new Promise(function (ok) { setTimeout(function () { ok(ULT); }, 5000); })]).catch(function () { return ULT; });
 }
 
 /* ---------- Lista de paraderos ---------- */
@@ -233,14 +260,11 @@ async function buscar() {
   var q = $('q').value.trim();
   $('msg').textContent = 'Buscando…'; $('lista').innerHTML = '';
   try {
-    var d = await croma('stops-search/v1', { query: q, per_page: 10 });
-    var stops = sacarLista(d, 'stops');
+    var stops = sacarLista(await croma('stops-search/v1', { query: q, per_page: 10 }), 'stops');
     var u = await ubicacionRapida();
     if (u) {
       stops.forEach(function (s) {
-        if (typeof s.latitude === 'number' && typeof s.longitude === 'number') {
-          s.distance_m = metros(u.lat, u.lon, s.latitude, s.longitude);
-        }
+        if (typeof s.latitude === 'number') s.distance_m = metros(u.lat, u.lon, s.latitude, s.longitude);
       });
       stops.sort(function (a, b) { return (a.distance_m || 1e12) - (b.distance_m || 1e12); });
     }
@@ -257,8 +281,7 @@ async function cerca() {
   $('msg').textContent = 'Buscando tu ubicación…'; $('lista').innerHTML = '';
   try {
     var u = await ubicacion();
-    var d = await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 600, per_page: 10 });
-    var stops = sacarLista(d, 'stops');
+    var stops = sacarLista(await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 600, per_page: 10 }), 'stops');
     $('msg').textContent = stops.length ? 'Paraderos cerca de ti:' : 'No hay paraderos a 600 metros.';
     mostrarParaderos(stops);
     decir('Estos son los paraderos cerca de la persona. Dile en pocas frases cuál es el más cercano, de qué tipo es y qué rutas pasan.', resumenParaderos(stops), false);
@@ -270,19 +293,21 @@ async function cerca() {
 
 /* ---------- Llegadas ---------- */
 function elegir(s) {
+  SEL = s;
   $('lista').innerHTML = '';
   $('titulo').textContent = s.name + ' (toca para ocultar o mostrar)';
   $('llbox').style.display = 'block';
   $('det-ll').open = true;
+  $('favok').textContent = '';
   clearInterval(timer);
   cargar(s, true);
+  alertas(s.stop_id);
   timer = setInterval(function () { cargar(s, false); }, 20000);
 }
 
 async function cargar(s, conIA) {
   try {
-    var d = await croma('stop-arrivals/v1', { stop_id: s.stop_id, limit: 10 });
-    var llegadas = sacarLista(d, 'arrivals');
+    var llegadas = sacarLista(await croma('stop-arrivals/v1', { stop_id: s.stop_id, limit: 10 }), 'arrivals');
     $('llegadas').innerHTML = '';
     if (!llegadas.length) { $('llegadas').textContent = 'No hay buses en camino ahora.'; }
     llegadas.forEach(function (a) {
@@ -303,6 +328,7 @@ async function cargar(s, conIA) {
       fila.appendChild(izq); fila.appendChild(der);
       $('llegadas').appendChild(fila);
     });
+    revisarAviso(llegadas);
     if (conIA) {
       decir('Estas son las llegadas en vivo al paradero ' + s.name + '. Dile a la persona qué bus llega primero y si hay retrasos.',
         JSON.stringify(llegadas.slice(0, 8).map(function (a) {
@@ -313,6 +339,195 @@ async function cargar(s, conIA) {
     $('llegadas').textContent = 'No se pudieron cargar las llegadas: ' + e.message;
     if (conIA) decir('Hubo un error al cargar las llegadas. Explícale a la persona qué pasó y qué puede hacer.', e.message, true);
   }
+}
+
+/* ---------- Aviso de bus cercano (notificación) ---------- */
+function ln() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }
+
+async function activarAviso() {
+  var r = $('av').value.trim().toUpperCase();
+  if (!r) { AVISO = null; $('avok').textContent = 'Aviso desactivado.'; return; }
+  AVISO = r;
+  var L = ln();
+  if (L) { try { await L.requestPermissions(); } catch (e) {} }
+  $('avok').textContent = 'Te aviso cuando la ruta ' + r + ' esté a 3 minutos o menos. Funciona con la app abierta.';
+}
+
+async function notificar(titulo, cuerpo) {
+  var L = ln();
+  if (L) {
+    try { await L.schedule({ notifications: [{ id: Math.floor(Date.now() % 2000000000), title: titulo, body: cuerpo }] }); return; } catch (e) {}
+  }
+  $('estado').style.color = '#5ddf8a';
+  $('estado').textContent = titulo + ': ' + cuerpo;
+}
+
+function revisarAviso(llegadas) {
+  if (!AVISO) return;
+  var m = llegadas.filter(function (a) { return String(a.route_code).toUpperCase() === AVISO && a.minutes_away <= 3; })[0];
+  if (m && Date.now() - ULTAVISO > 120000) {
+    ULTAVISO = Date.now();
+    notificar('Tu bus ' + AVISO + ' está cerca', 'Llega en ' + Math.max(0, Math.round(m.minutes_away)) + ' min a ' + (SEL ? SEL.name : 'tu paradero') + '.');
+  }
+}
+
+/* ---------- Alertas del servicio ---------- */
+async function alertas(stopId) {
+  var cont = $(stopId ? 'alertas-p' : 'alertas-r');
+  cont.textContent = 'Cargando…';
+  try {
+    var l = sacarLista(await croma('alerts/v1', stopId ? { stop_id: stopId } : {}), 'alerts');
+    cont.innerHTML = '';
+    if (!l.length) { cont.textContent = 'Sin alertas por ahora.'; return; }
+    l.slice(0, 10).forEach(function (a) {
+      var div = document.createElement('div');
+      div.className = 'fila';
+      var x = document.createElement('div');
+      var h = document.createElement('strong');
+      h.textContent = a.header || a.effect || 'Alerta';
+      var s = document.createElement('div');
+      s.className = 'sub';
+      s.textContent = (a.description || '').slice(0, 220);
+      x.appendChild(h); x.appendChild(s); div.appendChild(x);
+      cont.appendChild(div);
+    });
+  } catch (e) { cont.textContent = 'No pude cargar alertas: ' + e.message; }
+}
+
+/* ---------- Favoritos ---------- */
+function favs() { try { return JSON.parse(localStorage.getItem('favs') || '[]'); } catch (e) { return []; } }
+function guardarFavs(a) { try { localStorage.setItem('favs', JSON.stringify(a)); } catch (e) {} }
+
+function pintarFavs() {
+  var cont = $('favs'), a = favs();
+  cont.innerHTML = '';
+  if (!a.length) { cont.textContent = 'Aún no tienes favoritos. Elige un paradero y toca “Guardar en favoritos”.'; return; }
+  a.forEach(function (s) {
+    var b = document.createElement('button');
+    b.className = 'item';
+    b.type = 'button';
+    b.textContent = s.name;
+    b.onclick = function () { elegir(s); window.scrollTo(0, 0); };
+    cont.appendChild(b);
+  });
+}
+
+function agregarFav() {
+  if (!SEL) return;
+  var a = favs();
+  if (!a.some(function (x) { return x.stop_id === SEL.stop_id; })) {
+    a.push({ stop_id: SEL.stop_id, name: SEL.name });
+    guardarFavs(a);
+  }
+  pintarFavs();
+  $('favok').textContent = 'Guardado en favoritos.';
+}
+
+/* ---------- Cómo llegar (rutas directas) ---------- */
+async function planear() {
+  var dest = $('dest').value.trim();
+  if (!dest) return;
+  $('plan').textContent = 'Buscando ruta…';
+  try {
+    var u = await ubicacion();
+    var dd = sacarLista(await croma('stops-search/v1', { query: dest, per_page: 10 }), 'stops');
+    if (!dd.length) { $('plan').textContent = 'No encontré ese destino.'; return; }
+    var codDest = {};
+    dd.forEach(function (s) { (s.route_codes || []).forEach(function (c) { codDest[c] = true; }); });
+    var oo = sacarLista(await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 800, per_page: 20 }), 'stops');
+    var op = [];
+    oo.forEach(function (s) {
+      var comunes = (s.route_codes || []).filter(function (c) { return codDest[c]; });
+      if (comunes.length) op.push({ s: s, comunes: comunes });
+    });
+    op = op.slice(0, 3);
+    var res = { destino: dest, destinos_encontrados: dd.slice(0, 3).map(function (s) { return s.name; }), opciones: [] };
+    $('plan').innerHTML = '';
+    if (!op.length) {
+      $('plan').textContent = 'No encontré una ruta directa desde los paraderos a 800 m de ti. Prueba con otro destino cercano.';
+      decir('La persona quiere ir a "' + dest + '" pero no hay rutas directas desde los paraderos a 800 m. Díselo y sugiere buscar un destino cercano o un transbordo.', JSON.stringify(res), true);
+      return;
+    }
+    for (var i = 0; i < op.length; i++) {
+      var o = op[i], proximos = [];
+      try {
+        proximos = sacarLista(await croma('stop-arrivals/v1', { stop_id: o.s.stop_id, limit: 20 }), 'arrivals')
+          .filter(function (a) { return o.comunes.indexOf(a.route_code) >= 0; }).slice(0, 3);
+      } catch (e) {}
+      var dist = Math.round(o.s.distance_m || 0);
+      var fila = document.createElement('div');
+      fila.className = 'fila';
+      var izq = document.createElement('div');
+      var t1 = document.createElement('strong');
+      t1.textContent = o.s.name + ' · a ' + dist + ' m';
+      var t2 = document.createElement('div');
+      t2.className = 'sub';
+      t2.textContent = 'Rutas que van: ' + o.comunes.slice(0, 8).join(', ') + (proximos.length ? ' · próximo: ' + proximos.map(function (a) { return a.route_code + ' en ' + Math.round(a.minutes_away) + ' min'; }).join(', ') : ' · sin buses en camino ahora');
+      izq.appendChild(t1); izq.appendChild(t2); fila.appendChild(izq);
+      $('plan').appendChild(fila);
+      res.opciones.push({ paradero: o.s.name, distancia_m: dist, rutas: o.comunes.slice(0, 8), proximos: proximos.map(function (a) { return { ruta: a.route_code, minutos: Math.round(a.minutes_away) }; }) });
+    }
+    var nota = document.createElement('div');
+    nota.className = 'sub';
+    nota.textContent = 'Son rutas directas probables. Confirma el sentido del recorrido en el bus.';
+    $('plan').appendChild(nota);
+    decir('La persona quiere ir a "' + dest + '". Explícale en pocas frases cuál opción le conviene y por qué.', JSON.stringify(res), true);
+  } catch (e) {
+    $('plan').textContent = 'No pude planear el viaje: ' + (e.message || e);
+  }
+}
+
+/* ---------- Mapa en vivo ---------- */
+function cargarLeaflet() {
+  return new Promise(function (ok, no) {
+    if (window.L) { ok(); return; }
+    var c = document.createElement('link');
+    c.rel = 'stylesheet';
+    c.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css';
+    document.head.appendChild(c);
+    var s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+    s.onload = ok;
+    s.onerror = function () { no(new Error('No se pudo cargar el mapa. Revisa tu internet.')); };
+    document.head.appendChild(s);
+  });
+}
+
+async function pintarBuses(r, ajustar) {
+  var v = sacarLista(await croma('vehicles/v1', { route: r, per_page: 200 }), 'vehicles');
+  CAPA.clearLayers();
+  var pts = [];
+  v.forEach(function (x) {
+    if (typeof x.latitude !== 'number') return;
+    var p = [x.latitude, x.longitude];
+    pts.push(p);
+    L.circleMarker(p, { radius: 6, color: '#ffffff', weight: 1, fillColor: '#c8102e', fillOpacity: 1 })
+      .bindTooltip((x.route_code || r) + ' · ' + Math.round(x.speed_kmh || 0) + ' km/h' + (x.stop_name ? ' · hacia ' + x.stop_name : '')).addTo(CAPA);
+  });
+  if (ULT) {
+    L.circleMarker([ULT.lat, ULT.lon], { radius: 8, color: '#ffffff', weight: 2, fillColor: '#2e7cf6', fillOpacity: 1 }).bindTooltip('Tú').addTo(CAPA);
+  }
+  $('mmsg').textContent = v.length ? v.length + ' buses de la ruta ' + r + ' en vía ahora.' : 'No hay buses de esa ruta en vía ahora.';
+  if (ajustar && pts.length) { MAPA.fitBounds(pts, { padding: [30, 30] }); }
+  setTimeout(function () { MAPA.invalidateSize(); }, 200);
+}
+
+async function verMapa() {
+  var r = $('mr').value.trim().toUpperCase();
+  if (!r) { $('mmsg').textContent = 'Escribe una ruta, por ejemplo 614 o B10.'; return; }
+  $('mmsg').textContent = 'Cargando mapa…';
+  try {
+    await cargarLeaflet();
+    if (!MAPA) {
+      MAPA = L.map('mapa').setView([4.65, -74.08], 12);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: '© CARTO, © OpenStreetMap' }).addTo(MAPA);
+      CAPA = L.layerGroup().addTo(MAPA);
+    }
+    await ubicacionRapida();
+    await pintarBuses(r, true);
+    clearInterval(MTIMER);
+    MTIMER = setInterval(function () { pintarBuses(r, false).catch(function () {}); }, 20000);
+  } catch (e) { $('mmsg').textContent = e.message; }
 }
 
 /* ---------- Pregunta libre a la IA con datos reales ---------- */
@@ -327,7 +542,6 @@ async function preguntar() {
   try {
     var u = await ubicacion();
     contexto.ubicacion_persona = u;
-
     var m = q.match(/\b([A-Za-z]{0,2}\d{1,3}[A-Za-z]?)\b/);
     if (m) {
       try {
@@ -338,16 +552,13 @@ async function preguntar() {
         });
       } catch (e) { contexto.buses_de_esa_ruta_cerca = 'no disponible: ' + (e.message || e); }
     }
-
-    var d = await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 700, per_page: 5 });
-    var stops = sacarLista(d, 'stops');
+    var stops = sacarLista(await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 700, per_page: 5 }), 'stops');
     contexto.paraderos_cercanos = [];
     for (var i = 0; i < Math.min(3, stops.length); i++) {
       var s = stops[i];
       var item = { nombre: s.name, tipo: tipo(s), distancia_m: Math.round(s.distance_m || 0), rutas: (s.route_codes || []).slice(0, 12) };
       try {
-        var a = await croma('stop-arrivals/v1', { stop_id: s.stop_id, limit: 5 });
-        item.proximos_buses = sacarLista(a, 'arrivals').map(function (x) {
+        item.proximos_buses = sacarLista(await croma('stop-arrivals/v1', { stop_id: s.stop_id, limit: 5 }), 'arrivals').map(function (x) {
           return { ruta: x.route_code, destino: x.route_name, minutos: Math.round(x.minutes_away), atraso_segundos: x.delay_seconds };
         });
       } catch (e) { item.proximos_buses = 'no disponible'; }
@@ -361,6 +572,7 @@ async function preguntar() {
 
 ['croma', 'gemini', 'groq'].forEach(function (k) { $('k-' + k).value = leer(k); });
 if (!leer('croma')) { $('det-claves').open = true; }
+pintarFavs();
 $('estado').style.color = '#5ddf8a';
 $('estado').textContent = 'JS funcionando';
 </script>
