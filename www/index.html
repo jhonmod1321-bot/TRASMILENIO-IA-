@@ -13,7 +13,8 @@ h1{margin:0;padding:12px 0 4px;font-size:1.2rem;color:#fff}
 #tabs button.on{background:#c8102e;color:#fff;border-color:#c8102e}
 section{display:none}section.on{display:block}
 label{display:block;margin:12px 0 4px;font-weight:600}
-input{width:100%;box-sizing:border-box;padding:11px;border:1px solid #34343a;border-radius:6px;background:#1f1f23;color:#f0eeea;font:inherit}
+input,textarea{width:100%;box-sizing:border-box;padding:11px;border:1px solid #34343a;border-radius:6px;background:#1f1f23;color:#f0eeea;font:inherit}
+textarea{-webkit-text-security:disc;resize:vertical}
 button{margin:10px 8px 0 0;padding:13px 16px;border:0;border-radius:6px;background:#c8102e;color:#fff;font:inherit;font-weight:700}
 button.sec{background:#34343a}
 .item{display:block;width:100%;text-align:left;margin:8px 0 0;background:#1f1f23;border:1px solid #34343a;font-weight:400;color:#f0eeea}
@@ -21,6 +22,7 @@ button.sec{background:#34343a}
 .min{font-size:1.4rem;font-weight:800;color:#ff4d6a;white-space:nowrap}
 .sub{color:#a0a0a8;font-size:.9rem}
 .err{margin-top:10px;color:#ff6b6b;word-break:break-word}
+hr{border:0;border-top:1px solid #34343a;margin:16px 0}
 details{margin-top:12px}
 summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6px;font-weight:700}
 .ia{white-space:pre-wrap;padding:12px;background:#1f1f23;border-left:4px solid #c8102e;border-radius:6px;margin-top:8px;word-break:break-word}
@@ -29,7 +31,7 @@ summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6
 </style>
 </head>
 <body>
-<h1>Transmi App v9</h1>
+<h1>Transmi App v10</h1>
 <div id="estado">JS no arrancó</div>
 
 <div id="tabs">
@@ -40,7 +42,7 @@ summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6
   <button id="t-mapa" onclick="tab('mapa')">Mapa</button>
   <button id="t-alertas" onclick="tab('alertas')">Alertas</button>
   <button id="t-favs" onclick="tab('favs')">Favoritos</button>
-  <button id="t-claves" onclick="tab('claves')">Claves</button>
+  <button id="t-claves" onclick="tab('claves')">Ajustes</button>
 </div>
 
 <!-- BUSCAR -->
@@ -70,7 +72,7 @@ summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6
   <input id="pq" placeholder="¿Cuánto demora el 614 desde aquí?">
   <button onclick="preguntar()">Preguntar</button>
   <details id="box-ia" style="display:none" open><summary>Respuesta de la IA</summary><div id="ia-ia" class="ia"></div></details>
-  <p class="sub">Usa tu ubicación y datos en vivo de Croma. Responde Gemini o, si falla, Groq.</p>
+  <p class="sub">Usa tu ubicación y datos en vivo de Croma (máximo 2 consultas en vivo por pregunta). Responde Gemini o, si falla, Groq.</p>
 </section>
 
 <!-- CÓMO LLEGAR -->
@@ -92,7 +94,7 @@ summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6
   <button class="sec" onclick="segDetener()">Detener</button>
   <div id="segmsg" class="err"></div>
   <div id="segbox" style="display:none"></div>
-  <p class="sub">El seguimiento sigue con el celular bloqueado, con una notificación fija. Si tu celular lo cierra, entra a Ajustes, Batería, busca Transmi App y elige “Sin restricciones”.</p>
+  <p class="sub">Sigue con el celular bloqueado, con una notificación fija. Consulta menos cuando el bus está lejos, para ahorrar créditos. Si tu celular lo cierra, entra a Ajustes, Batería, Transmi App y elige “Sin restricciones”.</p>
 </section>
 
 <!-- MAPA -->
@@ -115,24 +117,36 @@ summary{padding:12px;background:#1f1f23;border:1px solid #34343a;border-radius:6
   <div id="favs"></div>
 </section>
 
-<!-- CLAVES -->
+<!-- AJUSTES -->
 <section id="s-claves">
-  <p class="sub">Tus claves se guardan solo en este dispositivo.</p>
-  <label>Clave de Croma</label>
-  <input id="k-croma" type="password" autocomplete="off">
+  <label>Claves de Croma (una por línea)</label>
+  <textarea id="k-croma" rows="3" autocomplete="off" spellcheck="false" placeholder="Pega una clave por línea"></textarea>
+  <div id="claveinfo" class="sub"></div>
   <label>Clave de Gemini</label>
   <input id="k-gemini" type="password" autocomplete="off">
   <label>Clave de Groq</label>
   <input id="k-groq" type="password" autocomplete="off">
   <button onclick="guardar()">Guardar claves</button>
   <div id="ok" class="sub"></div>
+  <hr>
+  <strong>Catálogo guardado en el celular</strong>
+  <div id="catinfo" class="sub"></div>
+  <button id="b-cat" onclick="bajarCatalogo()">Descargar catálogo</button>
+  <div id="catmsg" class="err"></div>
+  <hr>
+  <strong>Uso de créditos</strong>
+  <div id="uso" class="sub"></div>
+  <div id="ultimoerr" class="err"></div>
 </section>
 
 <script>
 function $(id) { return document.getElementById(id); }
-var timer = null, ULT = null, SEL = null;
-var MAPA = null, CAPA = null, MTIMER = null, BASE = null, TI = 0, TERR = 0;
-var TR = null, SEGSTOP = null, SEGTIMER = null, SEGWATCH = null, SEGLAST = 0;
+
+var SEL = null, TABACT = 'buscar', ULT = null;
+var LAST = { arr: 0, map: 0 };
+var MAPA = null, CAPA = null, BASE = null, TI = 0, TERR = 0, MAPR = null;
+var TR = null, SEGSTOP = null, SEGWATCH = null, SEGLAST = 0, SEGNEXT = 0;
+var CAT = null, CATTMP = null;
 var MODELO_GEMINI = 'gemini-3.8-flash';
 var MODELO_GROQ = 'openai/gpt-oss-20b';
 var SISTEMA = 'Eres el asistente de una app de TransMilenio en Bogotá. Responde en español colombiano, claro y corto (máximo 4 frases), usando SOLO los datos que te doy. No uses asteriscos ni formato markdown. Si hay un error, explica en palabras simples qué pasó y qué puede hacer la persona. No inventes buses, rutas ni tiempos. Si los datos no alcanzan para responder, dilo.';
@@ -145,32 +159,90 @@ window.onerror = function (m) { $('estado').style.color = '#ff6b6b'; $('estado')
 
 /* ---------- Pestañas ---------- */
 function tab(n) {
+  TABACT = n;
   ['buscar', 'ia', 'plan', 'seguir', 'mapa', 'alertas', 'favs', 'claves'].forEach(function (x) {
     $('s-' + x).classList.toggle('on', x === n);
     $('t-' + x).classList.toggle('on', x === n);
   });
   window.scrollTo(0, 0);
   if (n === 'mapa' && MAPA) { setTimeout(function () { MAPA.invalidateSize(); }, 200); }
+  if (n === 'claves') { pintarUso(); pintarClaves(); }
+  latido();
 }
 
 function leer(k) { try { return localStorage.getItem('clave_' + k) || ''; } catch (e) { return ''; } }
 function escribir(k, v) { try { localStorage.setItem('clave_' + k, v); } catch (e) {} }
+
+/* ---------- Varias claves de Croma ---------- */
+var LIVE = { 'vehicles/v1': 1, 'stop-arrivals/v1': 1, 'alerts/v1': 1 };
+var CACHE = {}, IDX = 0, MALAS = {};
+
+function clavesCroma() {
+  var t = $('k-croma').value || leer('croma');
+  return String(t).split(/[\s,;]+/).filter(Boolean);
+}
+
 function guardar() {
-  ['croma', 'gemini', 'groq'].forEach(function (k) { escribir(k, $('k-' + k).value.trim()); });
+  escribir('croma', clavesCroma().join('\n'));
+  escribir('gemini', $('k-gemini').value.trim());
+  escribir('groq', $('k-groq').value.trim());
+  MALAS = {}; IDX = 0;
   $('ok').textContent = 'Claves guardadas.';
+  pintarClaves();
+}
+
+function pintarClaves() {
+  var ks = clavesCroma(), malas = 0;
+  ks.forEach(function (k) { if (MALAS[k] && Date.now() < MALAS[k]) malas++; });
+  $('claveinfo').textContent = ks.length ? ks.length + ' clave(s) de Croma · activa: ' + (Math.min(IDX, ks.length - 1) + 1) + (malas ? ' · descansando: ' + malas : '') : 'Aún no hay claves de Croma.';
+}
+
+function hoy() { return 'gasto_' + new Date().toISOString().slice(0, 10); }
+function contar(vivo) {
+  var g;
+  try { g = JSON.parse(localStorage.getItem(hoy()) || '{"v":0,"o":0}'); } catch (e) { g = { v: 0, o: 0 }; }
+  if (vivo) g.v++; else g.o++;
+  try { localStorage.setItem(hoy(), JSON.stringify(g)); } catch (e) {}
+}
+function pintarUso() {
+  var g;
+  try { g = JSON.parse(localStorage.getItem(hoy()) || '{"v":0,"o":0}'); } catch (e) { g = { v: 0, o: 0 }; }
+  $('uso').textContent = 'Hoy: ' + g.v + ' consultas en vivo (unos ' + (g.v * 10) + ' créditos) y ' + g.o + ' de búsqueda o catálogo. Las repetidas en menos de 20 segundos no se cuentan.';
 }
 
 async function croma(ruta, cuerpo) {
-  var clave = $('k-croma').value.trim() || leer('croma');
-  var r = await fetch('https://api.croma.run/co/transmilenio/' + ruta, {
-    method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + clave, 'Content-Type': 'application/json' },
-    body: JSON.stringify(cuerpo)
-  });
-  var texto = await r.text();
-  if (!r.ok) throw new Error('Croma respondió con error ' + r.status + ': ' + texto.slice(0, 300));
-  try { return JSON.parse(texto); }
-  catch (e) { throw new Error('Respuesta que no es JSON: ' + texto.slice(0, 300)); }
+  var vivo = !!LIVE[ruta];
+  var ck = ruta + JSON.stringify(cuerpo);
+  if (vivo && CACHE[ck] && Date.now() - CACHE[ck].t < 20000) return CACHE[ck].d;
+  var ks = clavesCroma();
+  if (!ks.length) throw new Error('Falta la clave de Croma. Pégala en Ajustes.');
+  var orden = [];
+  for (var i = 0; i < ks.length; i++) { orden.push((IDX + i) % ks.length); }
+  var buenas = orden.filter(function (j) { return !(MALAS[ks[j]] && Date.now() < MALAS[ks[j]]); });
+  if (buenas.length) { orden = buenas; }
+  var ultimo = '';
+  for (var n = 0; n < orden.length; n++) {
+    var j = orden[n];
+    var r = await fetch('https://api.croma.run/co/transmilenio/' + ruta, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + ks[j], 'Content-Type': 'application/json' },
+      body: JSON.stringify(cuerpo)
+    });
+    var texto = await r.text();
+    if (r.ok) {
+      IDX = j;
+      contar(vivo);
+      var d;
+      try { d = JSON.parse(texto); } catch (e) { throw new Error('Respuesta que no es JSON: ' + texto.slice(0, 300)); }
+      if (vivo) { CACHE[ck] = { t: Date.now(), d: d }; }
+      return d;
+    }
+    ultimo = 'clave ' + (j + 1) + ' → error ' + r.status + ': ' + texto.slice(0, 200);
+    $('ultimoerr').textContent = 'Último error de Croma: ' + ultimo;
+    if ([401, 402, 403, 429].indexOf(r.status) >= 0) { MALAS[ks[j]] = Date.now() + 30 * 60000; continue; }
+    throw new Error('Croma respondió con error ' + r.status + ': ' + texto.slice(0, 300));
+  }
+  throw new Error('Todas tus claves de Croma fallaron. ' + ultimo);
 }
 
 function sacarLista(d, nombre) {
@@ -178,6 +250,114 @@ function sacarLista(d, nombre) {
   if (d && d.data && Array.isArray(d.data[nombre])) return d.data[nombre];
   if (d && d.result && Array.isArray(d.result[nombre])) return d.result[nombre];
   throw new Error('Formato inesperado. Croma respondió: ' + JSON.stringify(d).slice(0, 400));
+}
+
+/* ---------- Catálogo en el celular (IndexedDB) ---------- */
+function idb() {
+  return new Promise(function (ok, no) {
+    var r = indexedDB.open('transmi', 1);
+    r.onupgradeneeded = function () { r.result.createObjectStore('kv'); };
+    r.onsuccess = function () { ok(r.result); };
+    r.onerror = function () { no(r.error); };
+  });
+}
+async function idbGet(k) {
+  var d = await idb();
+  return new Promise(function (ok, no) {
+    var q = d.transaction('kv').objectStore('kv').get(k);
+    q.onsuccess = function () { ok(q.result); };
+    q.onerror = function () { no(q.error); };
+  });
+}
+async function idbSet(k, v) {
+  var d = await idb();
+  return new Promise(function (ok, no) {
+    var t = d.transaction('kv', 'readwrite');
+    t.objectStore('kv').put(v, k);
+    t.oncomplete = function () { ok(); };
+    t.onerror = function () { no(t.error); };
+  });
+}
+
+function norm(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+function aStop(c) { return { stop_id: c.id, name: c.n, kind: c.k, latitude: c.la, longitude: c.lo, route_codes: c.rc, systems: c.sy }; }
+
+function pintarCat(fecha) {
+  if (CAT) {
+    $('catinfo').textContent = CAT.length + ' paraderos guardados' + (fecha ? ' (' + new Date(fecha).toLocaleDateString('es-CO') + ')' : '') + '. Buscar, Cerca de mí, Cómo llegar y Seguir bus no gastan créditos para encontrar paraderos.';
+    $('b-cat').textContent = 'Actualizar catálogo';
+  } else {
+    $('catinfo').textContent = 'Sin catálogo. Ahora buscar paraderos usa consultas de Croma.';
+    $('b-cat').textContent = CATTMP ? 'Continuar descarga' : 'Descargar catálogo';
+  }
+}
+
+async function bajarCatalogo() {
+  if (!CATTMP) {
+    if (!confirm('Se descargan unos 8.300 paraderos en unas 85 consultas de búsqueda. Mira antes en tu panel de Croma cuánto cuestan. ¿Descargar ahora?')) return;
+    CATTMP = { pagina: 1, todo: [] };
+  }
+  try {
+    var got;
+    do {
+      $('catmsg').style.color = '#a0a0a8';
+      $('catmsg').textContent = 'Descargando… página ' + CATTMP.pagina + ' (' + CATTMP.todo.length + ' paraderos)';
+      var l = sacarLista(await croma('stops-search/v1', { page: CATTMP.pagina, per_page: 100 }), 'stops');
+      l.forEach(function (s) {
+        CATTMP.todo.push({ id: s.stop_id, n: s.name, k: s.kind, la: s.latitude, lo: s.longitude, rc: s.route_codes || [], sy: s.systems || [] });
+      });
+      got = l.length;
+      CATTMP.pagina++;
+    } while (got >= 100 && CATTMP.pagina <= 150);
+    var fecha = Date.now();
+    await idbSet('catalogo', { fecha: fecha, stops: CATTMP.todo });
+    CAT = CATTMP.todo;
+    CAT.forEach(function (c) { c.nn = norm(c.n); });
+    CATTMP = null;
+    $('catmsg').style.color = '#5ddf8a';
+    $('catmsg').textContent = 'Catálogo listo.';
+    pintarCat(fecha);
+  } catch (e) {
+    $('catmsg').style.color = '#ff6b6b';
+    $('catmsg').textContent = 'Se detuvo en la página ' + CATTMP.pagina + ': ' + (e.message || e) + '. Toca el botón de nuevo para continuar.';
+    pintarCat();
+  }
+}
+
+function buscarLocal(q) {
+  var p = norm(q).split(/\s+/).filter(Boolean), r = [];
+  if (!p.length) return r;
+  CAT.forEach(function (c) {
+    if (p.every(function (w) { return c.nn.indexOf(w) >= 0; })) r.push(aStop(c));
+  });
+  return r;
+}
+
+function cercaLocal(u, radio, max) {
+  var r = [];
+  CAT.forEach(function (c) {
+    var d = metros(u.lat, u.lon, c.la, c.lo);
+    if (d <= radio) { var s = aStop(c); s.distance_m = d; r.push(s); }
+  });
+  r.sort(function (a, b) { return a.distance_m - b.distance_m; });
+  return r.slice(0, max);
+}
+
+async function paraderosNombre(q, max) {
+  var r;
+  if (CAT) { r = buscarLocal(q); }
+  else { r = sacarLista(await croma('stops-search/v1', { query: q, per_page: max }), 'stops'); }
+  var u = ULT;
+  if (u) {
+    r.forEach(function (s) { if (typeof s.latitude === 'number') s.distance_m = metros(u.lat, u.lon, s.latitude, s.longitude); });
+    r.sort(function (a, b) { return (a.distance_m || 1e12) - (b.distance_m || 1e12); });
+  }
+  return r.slice(0, max);
+}
+
+async function paraderosCerca(u, radio, max) {
+  if (CAT) { return cercaLocal(u, radio, max); }
+  return sacarLista(await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: radio, per_page: max }), 'stops');
 }
 
 /* ---------- IA: Gemini primero, Groq de respaldo ---------- */
@@ -291,15 +471,9 @@ async function buscar() {
   var q = $('q').value.trim();
   $('msg').textContent = 'Buscando…'; $('lista').innerHTML = '';
   try {
-    var stops = sacarLista(await croma('stops-search/v1', { query: q, per_page: 10 }), 'stops');
-    var u = await ubicacionRapida();
-    if (u) {
-      stops.forEach(function (s) {
-        if (typeof s.latitude === 'number') s.distance_m = metros(u.lat, u.lon, s.latitude, s.longitude);
-      });
-      stops.sort(function (a, b) { return (a.distance_m || 1e12) - (b.distance_m || 1e12); });
-    }
-    $('msg').textContent = stops.length ? 'Elige un paradero:' : 'No encontré paraderos con ese nombre.';
+    await ubicacionRapida();
+    var stops = await paraderosNombre(q, 10);
+    $('msg').textContent = stops.length ? 'Elige un paradero:' + (CAT ? ' (del catálogo guardado)' : '') : 'No encontré paraderos con ese nombre.';
     mostrarParaderos(stops);
     decir('La persona buscó "' + q + '". Cuéntale en pocas frases qué paraderos encontraste, de qué tipo son y cuál le conviene elegir.', resumenParaderos(stops), 'buscar');
   } catch (e) {
@@ -312,8 +486,8 @@ async function cerca() {
   $('msg').textContent = 'Buscando tu ubicación…'; $('lista').innerHTML = '';
   try {
     var u = await ubicacion();
-    var stops = sacarLista(await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 600, per_page: 10 }), 'stops');
-    $('msg').textContent = stops.length ? 'Paraderos cerca de ti:' : 'No hay paraderos a 600 metros.';
+    var stops = await paraderosCerca(u, 600, 10);
+    $('msg').textContent = stops.length ? 'Paraderos cerca de ti:' + (CAT ? ' (del catálogo guardado)' : '') : 'No hay paraderos a 600 metros.';
     mostrarParaderos(stops);
     decir('Estos son los paraderos cerca de la persona. Dile en pocas frases cuál es el más cercano, de qué tipo es y qué rutas pasan.', resumenParaderos(stops), 'buscar');
   } catch (e) {
@@ -330,14 +504,14 @@ function elegir(s) {
   $('titulo').textContent = s.name + ' (toca para ocultar o mostrar)';
   $('llbox').style.display = 'block';
   $('det-ll').open = true;
+  $('det-ap').open = false;
+  $('alertas-p').textContent = '';
   $('favok').textContent = '';
-  clearInterval(timer);
   cargar(s, true);
-  alertas(s.stop_id);
-  timer = setInterval(function () { cargar(s, false); }, 20000);
 }
 
 async function cargar(s, conIA) {
+  LAST.arr = Date.now();
   try {
     var llegadas = sacarLista(await croma('stop-arrivals/v1', { stop_id: s.stop_id, limit: 10 }), 'arrivals');
     $('llegadas').innerHTML = '';
@@ -372,7 +546,7 @@ async function cargar(s, conIA) {
   }
 }
 
-/* ---------- Alertas ---------- */
+/* ---------- Alertas (solo cuando las pides) ---------- */
 async function alertas(stopId) {
   var cont = $(stopId ? 'alertas-p' : 'alertas-r');
   cont.textContent = 'Cargando…';
@@ -416,7 +590,7 @@ function agregarFav() {
   if (!SEL) return;
   var a = favs();
   if (!a.some(function (x) { return x.stop_id === SEL.stop_id; })) {
-    a.push({ stop_id: SEL.stop_id, name: SEL.name, latitude: SEL.latitude, longitude: SEL.longitude });
+    a.push({ stop_id: SEL.stop_id, name: SEL.name, latitude: SEL.latitude, longitude: SEL.longitude, route_codes: SEL.route_codes, systems: SEL.systems });
     guardarFavs(a);
   }
   pintarFavs();
@@ -430,11 +604,11 @@ async function planear() {
   $('plan').textContent = 'Buscando ruta…';
   try {
     var u = await ubicacion();
-    var dd = sacarLista(await croma('stops-search/v1', { query: dest, per_page: 10 }), 'stops');
+    var dd = await paraderosNombre(dest, 10);
     if (!dd.length) { $('plan').textContent = 'No encontré ese destino.'; return; }
     var codDest = {};
     dd.forEach(function (s) { (s.route_codes || []).forEach(function (c) { codDest[c] = true; }); });
-    var oo = sacarLista(await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 800, per_page: 20 }), 'stops');
+    var oo = await paraderosCerca(u, 800, 40);
     var op = [];
     oo.forEach(function (s) {
       var comunes = (s.route_codes || []).filter(function (c) { return codDest[c]; });
@@ -450,10 +624,12 @@ async function planear() {
     }
     for (var i = 0; i < op.length; i++) {
       var o = op[i], proximos = [];
-      try {
-        proximos = sacarLista(await croma('stop-arrivals/v1', { stop_id: o.s.stop_id, limit: 20 }), 'arrivals')
-          .filter(function (a) { return o.comunes.indexOf(a.route_code) >= 0; }).slice(0, 3);
-      } catch (e) {}
+      if (i < 2) {
+        try {
+          proximos = sacarLista(await croma('stop-arrivals/v1', { stop_id: o.s.stop_id, limit: 20 }), 'arrivals')
+            .filter(function (a) { return o.comunes.indexOf(a.route_code) >= 0; }).slice(0, 3);
+        } catch (e) {}
+      }
       var dist = Math.round(o.s.distance_m || 0);
       var fila = document.createElement('div');
       fila.className = 'fila';
@@ -462,14 +638,14 @@ async function planear() {
       t1.textContent = o.s.name + ' · a ' + dist + ' m';
       var t2 = document.createElement('div');
       t2.className = 'sub';
-      t2.textContent = 'Rutas que van: ' + o.comunes.slice(0, 8).join(', ') + (proximos.length ? ' · próximo: ' + proximos.map(function (a) { return a.route_code + ' en ' + Math.round(a.minutes_away) + ' min'; }).join(', ') : ' · sin buses en camino ahora');
+      t2.textContent = 'Rutas que van: ' + o.comunes.slice(0, 8).join(', ') + (i < 2 ? (proximos.length ? ' · próximo: ' + proximos.map(function (a) { return a.route_code + ' en ' + Math.round(a.minutes_away) + ' min'; }).join(', ') : ' · sin buses en camino ahora') : '');
       izq.appendChild(t1); izq.appendChild(t2); fila.appendChild(izq);
       $('plan').appendChild(fila);
       res.opciones.push({ paradero: o.s.name, distancia_m: dist, rutas: o.comunes.slice(0, 8), proximos: proximos.map(function (a) { return { ruta: a.route_code, minutos: Math.round(a.minutes_away) }; }) });
     }
     var nota = document.createElement('div');
     nota.className = 'sub';
-    nota.textContent = 'Son rutas directas probables. Confirma el sentido del recorrido en el bus.';
+    nota.textContent = 'Son rutas directas probables. Confirma el sentido del recorrido en el bus. Los tiempos en vivo solo se piden para las 2 primeras opciones.';
     $('plan').appendChild(nota);
     decir('La persona quiere ir a "' + dest + '". Explícale en pocas frases cuál opción le conviene y por qué.', JSON.stringify(res), 'plan');
   } catch (e) {
@@ -504,6 +680,7 @@ function ponerBase() {
 }
 
 async function pintarBuses(r, ajustar) {
+  LAST.map = Date.now();
   var v = sacarLista(await croma('vehicles/v1', { route: r, per_page: 200 }), 'vehicles');
   CAPA.clearLayers();
   var pts = [];
@@ -536,13 +713,12 @@ async function verMapa() {
       CAPA = L.layerGroup().addTo(MAPA);
     }
     await ubicacionRapida();
+    MAPR = r;
     await pintarBuses(r, true);
-    clearInterval(MTIMER);
-    MTIMER = setInterval(function () { pintarBuses(r, false).catch(function () {}); }, 20000);
   } catch (e) { $('mmsg').textContent = e.message; }
 }
 
-/* ---------- Pregunta libre a la IA ---------- */
+/* ---------- Pregunta libre a la IA (máx. 2 consultas en vivo) ---------- */
 async function preguntar() {
   var q = $('pq').value.trim();
   if (!q) { return; }
@@ -562,25 +738,24 @@ async function preguntar() {
         });
       } catch (e) { contexto.buses_de_esa_ruta_cerca = 'no disponible: ' + (e.message || e); }
     }
-    var stops = sacarLista(await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 700, per_page: 5 }), 'stops');
-    contexto.paraderos_cercanos = [];
-    for (var i = 0; i < Math.min(3, stops.length); i++) {
-      var s = stops[i];
-      var item = { nombre: s.name, tipo: tipo(s), distancia_m: Math.round(s.distance_m || 0), rutas: (s.route_codes || []).slice(0, 12) };
+    var stops = await paraderosCerca(u, 700, 5);
+    contexto.paraderos_cercanos = stops.slice(0, 3).map(function (s) {
+      return { nombre: s.name, tipo: tipo(s), distancia_m: Math.round(s.distance_m || 0), rutas: (s.route_codes || []).slice(0, 12) };
+    });
+    if (stops.length) {
       try {
-        item.proximos_buses = sacarLista(await croma('stop-arrivals/v1', { stop_id: s.stop_id, limit: 5 }), 'arrivals').map(function (x) {
+        contexto.paraderos_cercanos[0].proximos_buses = sacarLista(await croma('stop-arrivals/v1', { stop_id: stops[0].stop_id, limit: 6 }), 'arrivals').map(function (x) {
           return { ruta: x.route_code, destino: x.route_name, minutos: Math.round(x.minutes_away), atraso_segundos: x.delay_seconds };
         });
-      } catch (e) { item.proximos_buses = 'no disponible'; }
-      contexto.paraderos_cercanos.push(item);
+      } catch (e) { contexto.paraderos_cercanos[0].proximos_buses = 'no disponible'; }
     }
   } catch (e) {
     contexto.aviso = 'No se pudieron obtener los datos: ' + (e.message || e);
   }
-  decir('Pregunta de la persona: "' + q + '". Responde con los datos. Si no alcanzan para responder completo, dilo y sugiere qué paradero y bus tomar primero.', JSON.stringify(contexto), 'ia');
+  decir('Pregunta de la persona: "' + q + '". Responde con los datos. Solo tienes los próximos buses del paradero más cercano. Si no alcanzan para responder completo, dilo y sugiere qué paradero y bus tomar primero.', JSON.stringify(contexto), 'ia');
 }
 
-/* ---------- Seguir bus (segundo plano) ---------- */
+/* ---------- Seguir bus (segundo plano, ahorrando créditos) ---------- */
 function ln() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications; }
 function bg() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.BackgroundGeolocation; }
 
@@ -595,7 +770,7 @@ async function segCercano() {
   $('segpar').textContent = 'Buscando…';
   try {
     var u = await ubicacion();
-    var stops = sacarLista(await croma('stops-search/v1', { latitude: u.lat, longitude: u.lon, radius_m: 1500, per_page: 40 }), 'stops');
+    var stops = await paraderosCerca(u, 1500, CAT ? 400 : 100);
     var con = stops.filter(function (s) {
       return (s.route_codes || []).some(function (c) { return String(c).toUpperCase() === ruta; });
     });
@@ -621,22 +796,32 @@ async function notifSeg(titulo, cuerpo, final) {
   } catch (e) {}
 }
 
+function proximoChequeo(min) {
+  if (min === null) return 120000;
+  if (min > 20) return 150000;
+  if (min > 10) return 90000;
+  if (min > 5) return 60000;
+  return 30000;
+}
+
 async function segTick() {
   if (!TR) return;
   SEGLAST = Date.now();
+  SEGNEXT = Date.now() + 30000;
+  var minSig = null;
   try {
     var u = ULT;
     if (!bg()) { u = await ubicacionRapida(); }
     var l = sacarLista(await croma('stop-arrivals/v1', { stop_id: TR.stop.stop_id, limit: 40 }), 'arrivals')
       .filter(function (a) { return String(a.route_code).toUpperCase() === TR.route; });
-    var lineas = [];
-    var cuerpo = '';
+    var lineas = [], cuerpo = '';
     if (!l.length) {
       lineas.push('Ruta ' + TR.route + ': no hay buses en camino a ' + TR.stop.name + ' ahora.');
       cuerpo = 'Sin buses en camino a ' + TR.stop.name;
     } else {
       var a = l[0];
       var min = Math.max(0, Math.round(a.minutes_away));
+      minSig = min;
       var atraso = Math.round((a.delay_seconds || 0) / 60);
       lineas.push('Ruta ' + TR.route + ' llega en ' + min + ' min' + (atraso > 0 ? ' (va ' + atraso + ' min atrasado)' : ' (a tiempo)'));
       cuerpo = 'Llega en ' + min + ' min a ' + TR.stop.name;
@@ -660,7 +845,8 @@ async function segTick() {
         return;
       }
     }
-    $('segbox').textContent = lineas.join('\n') + '\n\nActualizado ' + new Date().toLocaleTimeString('es-CO');
+    SEGNEXT = Date.now() + proximoChequeo(minSig);
+    $('segbox').textContent = lineas.join('\n') + '\n\nActualizado ' + new Date().toLocaleTimeString('es-CO') + ' · próxima revisión en ' + Math.round(proximoChequeo(minSig) / 1000) + ' s';
     notifSeg('Siguiendo ruta ' + TR.route, cuerpo, false);
   } catch (e) {
     $('segbox').textContent = 'No pude actualizar: ' + (e.message || e) + '\nReintento en 30 segundos.';
@@ -686,7 +872,7 @@ async function segIniciar() {
         function (loc, err) {
           if (err || !loc) return;
           ULT = { lat: loc.latitude, lon: loc.longitude };
-          if (TR && Date.now() - SEGLAST > 25000) segTick();
+          if (TR && Date.now() >= SEGNEXT) segTick();
         });
     } catch (e) {
       $('segmsg').textContent = 'No pude activar el modo segundo plano (' + (e.message || e) + '). El seguimiento funcionará con la app abierta.';
@@ -696,13 +882,11 @@ async function segIniciar() {
   }
   $('segbox').style.display = 'block';
   $('segbox').textContent = 'Iniciando seguimiento…';
-  clearInterval(SEGTIMER);
+  SEGNEXT = 0;
   segTick();
-  SEGTIMER = setInterval(segTick, 30000);
 }
 
 async function segDetener(auto) {
-  clearInterval(SEGTIMER);
   TR = null;
   var B = bg();
   if (B && SEGWATCH) { try { await B.removeWatcher({ id: SEGWATCH }); } catch (e) {} }
@@ -712,10 +896,34 @@ async function segDetener(auto) {
   if (!auto) { $('segbox').textContent = 'Seguimiento detenido.'; }
 }
 
+/* ---------- Latido: solo actualiza lo que estás mirando ---------- */
+function visible() { return document.visibilityState === 'visible'; }
+
+function latido() {
+  var ahora = Date.now();
+  if (SEL && TABACT === 'buscar' && visible() && ahora - LAST.arr > 30000) { cargar(SEL, false); }
+  if (MAPR && MAPA && TABACT === 'mapa' && visible() && ahora - LAST.map > 30000) { pintarBuses(MAPR, false).catch(function () {}); }
+  if (TR && ahora >= SEGNEXT) { segTick(); }
+}
+setInterval(latido, 5000);
+document.addEventListener('visibilitychange', latido);
+
 /* ---------- Arranque ---------- */
-['croma', 'gemini', 'groq'].forEach(function (k) { $('k-' + k).value = leer(k); });
-if (!leer('croma')) { tab('claves'); }
+$('k-croma').value = leer('croma');
+$('k-gemini').value = leer('gemini');
+$('k-groq').value = leer('groq');
+pintarClaves();
 pintarFavs();
+pintarCat();
+idbGet('catalogo').then(function (c) {
+  if (c && c.stops && c.stops.length) {
+    CAT = c.stops;
+    CAT.forEach(function (x) { x.nn = norm(x.n); });
+    pintarCat(c.fecha);
+  }
+}).catch(function () {});
+if (!clavesCroma().length) { tab('claves'); }
+$('det-ap').addEventListener('toggle', function () { if (this.open && SEL) { alertas(SEL.stop_id); } });
 $('estado').style.color = '#5ddf8a';
 $('estado').textContent = 'JS funcionando';
 </script>
